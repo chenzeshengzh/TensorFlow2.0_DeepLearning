@@ -1,0 +1,67 @@
+import os
+from sklearn.datasets import make_moons
+from sklearn.model_selection import train_test_split
+import tensorflow as tf
+from matplotlib import pyplot as plt
+import seaborn as sns
+from tensorflow.keras import layers, Sequential, losses, optimizers
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+gpu = tf.config.experimental.list_physical_devices('GPU')
+assert len(gpu) > 0
+tf.config.experimental.set_memory_growth(gpu[0], True)
+
+
+def get_dataset():
+    N_SAMPLES = 2000
+    TEST_SIZE = 0.3
+    x, y = make_moons(n_samples=N_SAMPLES, noise=0.2, random_state=7)
+    # make_plot(x, y, 'dataset')
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=TEST_SIZE, random_state=7)
+    return x_train, x_test, y_train, y_test
+
+
+def make_plot(x, y, plot_name, file_name=None):
+    sns.set_style('whitegrid')
+    plt.figure(figsize=(16, 12))
+    axes = plt.gca()
+    axes.set(xlabel='$x_1$', ylabel='$x_2$')
+    plt.title(plot_name, fontsize=30)
+    plt.subplots_adjust(left=0.20)
+    plt.subplots_adjust(right=0.80)
+    plt.scatter(x[:, 0], x[:, 1], c=y.ravel(), s=40, cmap=plt.cm.Spectral, edgecolors='none')
+    plt.show()
+
+
+def main():
+    x_train, x_test, y_train, y_test = get_dataset()
+    train_db = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(1000).batch(100)
+
+    model = Sequential([
+        layers.Dense(25, activation='relu'),
+        layers.Dense(50, activation='relu'),
+        layers.Dense(25, activation='relu'),
+        layers.Dense(2)
+    ])
+
+    optimizer = optimizers.Adam(lr=1e-3)
+
+    for epoch in range(1000):
+        for step, (x, y) in enumerate(train_db):
+            with tf.GradientTape() as tape:
+                out = model(x)
+                y = tf.one_hot(y, depth=2)
+                loss = losses.binary_crossentropy(y, out, from_logits=True)
+                loss = tf.reduce_mean(loss, axis=0)
+            grads = tape.gradient(loss, model.trainable_variables)
+            optimizer.apply_gradients(zip(grads, model.trainable_variables))
+        if epoch % 20 == 0:
+            print(f'epoch:{epoch}, loss:{loss.numpy()}')
+            out = model(x_test)
+            out = tf.argmax(out, axis=1)
+            correct = tf.reduce_sum(tf.cast(tf.equal(out, y_test), dtype=tf.int32)) / y_test.shape[0]
+            print(f'correct rate:{correct.numpy()}')
+
+
+if __name__ == '__main__':
+    main()
